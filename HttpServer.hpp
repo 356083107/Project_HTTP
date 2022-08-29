@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include"Protocol.hpp"
 #include "TcpServer.hpp"
+#include"Log.hpp"
 
 #define PORT 8081
 
@@ -23,6 +24,7 @@ public:
      
     void Loop()
     {
+      LOG(INFO,"Loop,begin!");
       int listen_sock = tcp_server->Sock();
       while(!stop){
         struct sockaddr_in peer;
@@ -31,6 +33,7 @@ public:
         if(sock < 0 ){
           continue;
         }
+        LOG(INFO,"Get a new link");
         int *_sock = new int(sock);
         pthread_t tid;
         pthread_create(&tid,nullptr,Entrance:: HandlerRequest,_sock);
