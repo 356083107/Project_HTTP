@@ -1,6 +1,10 @@
+#pragma once 
+
 #include<iostream>
+#include<sstream>
 #include<unistd.h>
 #include<vector>
+#include<unordered_map>
 #include<string>
 #include<sys/types.h>
 #include<sys/socket.h>
@@ -15,6 +19,13 @@ class HttpRequest{
       std::string blank;
       std::string request_body;
 
+      //解析之后的方法
+      std::string method;
+      std::string uri;
+      std::string version;
+
+      std::unordered_map<std::string,std::string>header_kv;
+
 };
 
 class HttpResponse{
@@ -26,7 +37,7 @@ class HttpResponse{
 };
 
 //读取请求，分析请求，构建相应
-
+//IO通信
 class EndPoint{
   private:
     int sock;
@@ -35,9 +46,46 @@ class EndPoint{
   private:
     void RecvHttpRequestLine()
     {
-       Util::ReadLine(sock,http_request.request_line);
+       auto &line =http_request.request_line;
+       Util::ReadLine(sock,line);
+       line.resize(line.size()-1);
+       LOG(INFO,http_request.request_line);
     }
     
+    void RecvHttpRequestHeader()
+    {
+      std::string line;
+      while(true)
+      {
+        line.clear();
+        Util::ReadLine(sock,line);
+        if(line == "\n")
+        {
+          http_request.blank = line;  
+          break;
+        }
+        line.resize(line.size()-1);
+        http_request.request_header.push_back(line);
+        LOG(INFO,line);
+      }
+    
+    }
+   
+    void ParseHttpRequestLine()
+    {  auto &line = http_request.request_line;
+       std::stringstream ss(line);
+       ss >> http_request.method >> http_request.uri >>http_request.version ;
+       LOG(INFO,http_request.method);
+       LOG(INFO,http_request.uri);
+       LOG(INFO,http_request.version);
+
+    }
+
+    void ParseHttpRequestHeader()
+    {
+      
+    }
+
 
 
  public:
@@ -45,11 +93,13 @@ class EndPoint{
     {}
     void RecvHttpPoint()
     {
-
+      RecvHttpRequestLine();
+      RecvHttpRequestHeader();
     }
     void ParseHttpRequest()
     {
-
+      ParseHttpRequestLine();
+      RarseHttpRequestHeader();
     }
     void BuildHttpResponse()
     {
