@@ -7,11 +7,19 @@
 #include<unordered_map>
 #include<string>
 #include<sys/types.h>
+#include<algorithm>
+#include<sys/stat.h>
 #include<sys/socket.h>
 #include"Util.hpp"
 #include"Log.hpp"
 
+#define OK 200
+#define WEB_ROOT "wwwroot"
+#define HOME_PAGE "index.html"
+
+#define NOT_FOUND 404
 #define SEP ": "
+
 class HttpRequest{
     
     public:
@@ -27,9 +35,14 @@ class HttpRequest{
 
       std::unordered_map<std::string,std::string>header_kv;
       int content_length;
+      std::string path;
+      std::string query_string;
+
+      bool cgi;
+
 
     public:
-      HttpRequest():content_length(0){}
+      HttpRequest():content_length(0),cgi(false){}
      ~HttpRequest(){}
 
 };
@@ -40,6 +53,13 @@ class HttpResponse{
      std::vector<std::string>response_header;
      std::string blank;
      std::string response_body;
+
+     int status_code;
+  public:
+     HttpResponse():status_code(OK){}
+
+    ~ HttpResponse(){}
+
 };
 
 //读取请求，分析请求，构建相应
@@ -82,6 +102,8 @@ class EndPoint{
     {  auto &line = http_request.request_line;
        std::stringstream ss(line);
        ss >> http_request.method >> http_request.uri >>http_request.version ;
+       auto &method =http_request.method;
+       std::transform(method.begin(),method.end(),method.begin(),::toupper);
        LOG(INFO,http_request.method);
        LOG(INFO,http_request.uri);
        LOG(INFO,http_request.version);
@@ -151,8 +173,85 @@ class EndPoint{
     }
     void BuildHttpResponse()
     {
+      std::string _path;
+      struct stat st;
+      auto &code = http_response.status_code;
+      if(http_request.method !="GET" && http_request.method !="POST"){
+        //非法请求
+        LOG(WARNING,"method is not right");
+        code = NOT_FOUND;
+        goto END;
+
+      }
+      if(http_request.method == "GET"){
+         size_t pos = http_request.uri.find('?');
+         if(pos !=std::string::npos){
+           Util::CutString(http_request.uri,http_request.path,http_request.query_string,"?");
+         }
+           else {
+             http_request.path = http_request.uri;
+           }
+         }
+      else if(http_request.method == "POST"){
+        //POST
+        http_request.cgi = true;
+      }
+      else {
+        //Do Nothing
+      }
+      _path = http_request.path;
+      http_request.path = WEB_ROOT;
+      http_request.path +=_path;
+      if(http_request.path[http_request.path.size()-1] =='/'){
+        http_request.path +=HOME_PAGE;
+      }
+      std::cout<<"debug: uri:"<<http_request.uri<<std::endl;
+      std::cout<<"debug: path:"<<http_request.path<<std::endl;
+      std::cout<<"debug: query_string:"<<http_request.query_string<<std::endl;
+      if(stat(http_request.path.c_str(),&st) == 0)
+      {
+        //说明资源是存在的
+                        if(S_ISDIR(st.st_mode)){
+                    //说明请求的资源是一个目录，不被允许的,需要做一下相关处理
+                    //虽然是一个目录，但是绝对不会以/结尾！
+                    http_request.path += "/";
+                    http_request.path += HOME_PAGE;
+                    stat(http_request.path.c_str(), &st);
+                }
+                if( (st.st_mode&S_IXUSR) || (st.st_mode&S_IXGRP) || (st.st_mode&S_IXOTH) ){
+                    //特殊处理
+                    http_request.cgi = true;
+                }
+              
+
+      }
+    else{
+      //说明资源不存在的
+      std::string info = http_request.path;
+      info +="Not Found!";
+      LOG(WARNING,info);
+      code = NOT_FOUND;
+      goto END;
+    }
+    if(http_request.cgi){
+      //ProcessCgi();
+    }
+    else{
+       ProcessNonCgi();    //返回静态网页
+      
+    }
+
+
+END:
+      return ;
 
     }
+   
+    int ProcessNonCgi()
+    {
+      return 0;
+    }
+
     void SendHttpResponse()
     {
 
@@ -167,6 +266,7 @@ class EndPoint{
 };
 
 
+//#define DEBUG 1
 
 class Entrance{
     public:
